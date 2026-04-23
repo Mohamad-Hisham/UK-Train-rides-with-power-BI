@@ -1,0 +1,483 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Locale {
+  EN
+  AR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum SessionStatus {
+  DRAFT
+  SCHEDULED
+  ONGOING
+  FINISHED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum TicketStatus {
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  REOPENED
+}
+
+enum CommunityPostStatus {
+  PUBLISHED
+  HIDDEN
+  FLAGGED
+  ARCHIVED
+}
+
+enum SurveyStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum QuestionType {
+  SHORT_TEXT
+  LONG_TEXT
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  RATING
+  BOOLEAN
+}
+
+enum QuizStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model AdminUser {
+  id              String            @id @default(cuid())
+  email           String            @unique
+  passwordHash    String
+  firstNameEn     String
+  lastNameEn      String
+  firstNameAr     String?
+  lastNameAr      String?
+  phone           String?
+  avatarUrl       String?
+  preferredLocale Locale            @default(EN)
+  status          UserStatus        @default(ACTIVE)
+  lastLoginAt     DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  roleAssignments AdminUserRole[]
+
+  createdSessions Session[]         @relation("SessionCreatedBy")
+  attendanceTaken Attendance[]      @relation("AttendanceMarkedBy")
+
+  createdSurveys  Survey[]          @relation("SurveyCreatedBy")
+  surveyResponses SurveyResponse[]
+
+  createdQuizzes      Quiz[]            @relation("QuizCreatedBy")
+  quizSubmissions     QuizSubmission[]
+  createdAssessments  Assessment[]      @relation("AssessmentCreatedBy")
+
+  assignedGroups   GroupAdmin[]
+
+  createdTickets   Ticket[]             @relation("TicketCreatedBy")
+  assignedTickets  Ticket[]             @relation("TicketAssignedTo")
+  ticketReplies    TicketReply[]
+
+  communityPosts    CommunityPost[]
+  communityComments CommunityComment[]
+
+  importLogs       FileImportLog[]
+  exportLogs       ExportLog[]
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  nameEn      String
+  nameAr      String?
+  description String?
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  userAssignments AdminUserRole[]
+  permissions     RolePermission[]
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  resource    String
+  action      String
+  name        String           @unique
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  roles       RolePermission[]
+}
+
+model AdminUserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+
+  user       AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  assignedAt   DateTime   @default(now())
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Student {
+  id                  String            @id @default(cuid())
+  code                String            @unique
+  firstNameEn         String
+  lastNameEn          String
+  firstNameAr         String?
+  lastNameAr          String?
+  email               String?           @unique
+  phone               String?
+  avatarUrl           String?
+  dateOfBirth         DateTime?
+  joinedAt            DateTime          @default(now())
+  status              UserStatus        @default(ACTIVE)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  groupMemberships    GroupStudent[]
+  attendances         Attendance[]
+  quizSubmissions     QuizSubmission[]
+  assessmentSubmits   AssessmentSubmission[]
+  surveyResponses     SurveyResponse[]
+  tickets             Ticket[]          @relation("TicketCreatedByStudent")
+  communityPosts      CommunityPost[]   @relation("CommunityPostByStudent")
+  communityComments   CommunityComment[]@relation("CommunityCommentByStudent")
+}
+
+model Group {
+  id              String          @id @default(cuid())
+  code            String          @unique
+  nameEn          String
+  nameAr          String?
+  description     String?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  sessions        Session[]
+  members         GroupStudent[]
+  admins          GroupAdmin[]
+}
+
+model GroupStudent {
+  groupId       String
+  studentId     String
+  assignedAt    DateTime @default(now())
+
+  group         Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, studentId])
+}
+
+model GroupAdmin {
+  groupId       String
+  adminUserId   String
+  assignedAt    DateTime  @default(now())
+
+  group         Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  adminUser     AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, adminUserId])
+}
+
+model Session {
+  id               String         @id @default(cuid())
+  code             String         @unique
+  titleEn          String
+  titleAr          String?
+  description      String?
+  startsAt         DateTime
+  endsAt           DateTime
+  location         String?
+  status           SessionStatus  @default(DRAFT)
+  isExported       Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  groupId          String
+  createdById      String
+
+  group            Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  createdBy        AdminUser      @relation("SessionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  attendances      Attendance[]
+}
+
+model Attendance {
+  id               String           @id @default(cuid())
+  sessionId        String
+  studentId        String
+  status           AttendanceStatus
+  note             String?
+  markedAt         DateTime         @default(now())
+  markedById       String?
+
+  session          Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student          Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  markedBy         AdminUser?       @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, studentId])
+}
+
+model Quiz {
+  id               String          @id @default(cuid())
+  titleEn          String
+  titleAr          String?
+  description      String?
+  status           QuizStatus      @default(DRAFT)
+  maxScore         Float           @default(100)
+  dueAt            DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  createdById      String
+  createdBy        AdminUser       @relation("QuizCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  submissions      QuizSubmission[]
+}
+
+model QuizSubmission {
+  id               String          @id @default(cuid())
+  quizId           String
+  studentId        String?
+  adminUserId      String?
+  score            Float?
+  submittedAt      DateTime        @default(now())
+  gradedAt         DateTime?
+
+  quiz             Quiz            @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student          Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  adminUser        AdminUser?      @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([quizId, submittedAt])
+}
+
+model Assessment {
+  id               String               @id @default(cuid())
+  titleEn          String
+  titleAr          String?
+  description      String?
+  status           AssessmentStatus     @default(DRAFT)
+  maxScore         Float                @default(100)
+  dueAt            DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  createdById      String
+  createdBy        AdminUser            @relation("AssessmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  submissions      AssessmentSubmission[]
+}
+
+model AssessmentSubmission {
+  id               String          @id @default(cuid())
+  assessmentId     String
+  studentId        String
+  score            Float?
+  submittedAt      DateTime        @default(now())
+  gradedAt         DateTime?
+
+  assessment       Assessment      @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student          Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId, submittedAt])
+}
+
+model Survey {
+  id               String            @id @default(cuid())
+  titleEn          String
+  titleAr          String?
+  description      String?
+  status           SurveyStatus      @default(DRAFT)
+  publishedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  createdById      String
+  createdBy        AdminUser         @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  questions        SurveyQuestion[]
+  responses        SurveyResponse[]
+}
+
+model SurveyQuestion {
+  id               String          @id @default(cuid())
+  surveyId         String
+  promptEn         String
+  promptAr         String?
+  type             QuestionType
+  isRequired       Boolean         @default(false)
+  orderNo          Int
+  optionsJson      Json?
+
+  survey           Survey          @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, orderNo])
+}
+
+model SurveyResponse {
+  id               String          @id @default(cuid())
+  surveyId         String
+  questionId       String
+  studentId        String?
+  adminUserId      String?
+  answerJson       Json
+  submittedAt      DateTime        @default(now())
+
+  survey           Survey          @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  question         SurveyQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  student          Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  adminUser        AdminUser?      @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([surveyId, submittedAt])
+}
+
+model Ticket {
+  id               String          @id @default(cuid())
+  code             String          @unique
+  subject          String
+  description      String
+  status           TicketStatus    @default(IN_PROGRESS)
+  priority         Int             @default(3)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  closedAt         DateTime?
+
+  createdByAdminId   String?
+  createdByStudentId String?
+  assignedToId       String?
+
+  createdByAdmin   AdminUser?      @relation("TicketCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdByStudent Student?        @relation("TicketCreatedByStudent", fields: [createdByStudentId], references: [id], onDelete: SetNull)
+  assignedTo       AdminUser?      @relation("TicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  replies          TicketReply[]
+}
+
+model TicketReply {
+  id               String          @id @default(cuid())
+  ticketId         String
+  authorAdminId    String
+  message          String
+  createdAt        DateTime        @default(now())
+
+  ticket           Ticket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorAdmin      AdminUser       @relation(fields: [authorAdminId], references: [id], onDelete: Restrict)
+}
+
+model CommunityPost {
+  id               String               @id @default(cuid())
+  title            String
+  body             String
+  status           CommunityPostStatus  @default(PUBLISHED)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  createdByAdminId   String?
+  createdByStudentId String?
+
+  createdByAdmin   AdminUser?           @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdByStudent Student?             @relation("CommunityPostByStudent", fields: [createdByStudentId], references: [id], onDelete: SetNull)
+  comments         CommunityComment[]
+}
+
+model CommunityComment {
+  id               String            @id @default(cuid())
+  postId           String
+  body             String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  authorAdminId    String?
+  authorStudentId  String?
+
+  post             CommunityPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorAdmin      AdminUser?        @relation(fields: [authorAdminId], references: [id], onDelete: SetNull)
+  authorStudent    Student?          @relation("CommunityCommentByStudent", fields: [authorStudentId], references: [id], onDelete: SetNull)
+}
+
+model FileImportLog {
+  id               String         @id @default(cuid())
+  module           String
+  fileName         String
+  fileUrl          String?
+  status           ImportStatus   @default(PENDING)
+  totalRows        Int            @default(0)
+  successRows      Int            @default(0)
+  failedRows       Int            @default(0)
+  errorLog         Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  createdById      String
+  createdBy        AdminUser      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+}
+
+model ExportLog {
+  id               String         @id @default(cuid())
+  module           String
+  format           String
+  filtersJson      Json?
+  status           ExportStatus   @default(PENDING)
+  fileUrl          String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  createdById      String
+  createdBy        AdminUser      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+}
